@@ -42,6 +42,19 @@ func main() {
 
 	gamelogic.PrintServerHelp()
 
+	ch, _, err := pubsub.DeclareAndBind(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
+		pubsub.QueueTypeDurable,
+	)
+	if err != nil {
+		log.Fatalf("Failed to declare and bind queue: %v\n", err)
+	}
+
+	defer ch.Close()
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 	go func() {
