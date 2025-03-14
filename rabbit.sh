@@ -2,8 +2,11 @@
 
 case "$1" in
     start)
-        echo "Starting RabbitMQ container..."
-        docker run -d --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
+        echo "Starting RabbitMQ container with persistent volume..."
+        docker run -d --name rabbitmq \
+        -p 5672:5672 -p 15672:15672 \
+        -v rabbitmq_data:/var/lib/rabbitmq \
+        rabbitmq:3.13-management
         ;;
     stop)
         echo "Stopping RabbitMQ container..."
