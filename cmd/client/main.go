@@ -43,7 +43,46 @@ func main() {
 
 	defer ch.Close()
 
-	fmt.Printf("Created queue: %s\n", q.Name)
-	fmt.Println("Client running. Press Enter to exit...")
-	fmt.Scanln()
+	go func() {
+		fmt.Printf("Created queue: %s\n", q.Name)
+		fmt.Println("Client running. Press Enter to exit...")
+		fmt.Scanln()
+	}()
+
+	gamestate := gamelogic.NewGameState(username)
+
+	for {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
+			continue
+		}
+
+		if words[0] == "spawn" {
+			err := gamestate.CommandSpawn(words)
+			if err != nil {
+				fmt.Printf("Failed to spawn unit: %v\n", err)
+			}
+		} else if words[0] == "move" {
+			_, err := gamestate.CommandMove(words)
+			if err != nil {
+				fmt.Printf("Failed to move unit: %v\n", err)
+			} else {
+				fmt.Println("Unit moved successfully")
+			}
+		} else if words[0] == "status" {
+			gamestate.CommandStatus()
+		} else if words[0] == "help" {
+			gamelogic.PrintClientHelp()
+		} else if words[0] == "spam" {
+			fmt.Println("Spamming not allowed yet!")
+		} else if words[0] == "quit" {
+			gamelogic.PrintQuit()
+			break
+		} else {
+			fmt.Println("Unknown command")
+			continue
+		}
+
+	}
+
 }
