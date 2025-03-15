@@ -8,6 +8,13 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+type SimpleQueueType int
+
+const (
+	QueueTypeDurable = iota
+	QueueTypeTransient
+)
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	jsonBytes, err := json.Marshal(val)
 	if err != nil {
@@ -29,12 +36,43 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	)
 }
 
-const (
-	QueueTypeDurable = iota
-	QueueTypeTransient
-)
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType SimpleQueueType, handler func(T)) error {
+	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+		return err
+	}
 
-func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType int) (*amqp.Channel, amqp.Queue, error) {
+	deliveries, err := ch.Consume(
+		q.Name,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for delivery := range deliveries {
+			var msg T
+			err := json.Unmarshal(delivery.Body, &msg)
+			if err != nil {
+				log.Printf("Error unmarshalling message: %v", err)
+				delivery.Ack(false)
+				continue
+			}
+
+			handler(msg)
+			delivery.Ack(false)
+		}
+	}()
+	return nil
+}
+
+func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, simpleQueueType SimpleQueueType) (*amqp.Channel, amqp.Queue, error) {
 	var durable, autoDelete, exclusive bool
 
 	if simpleQueueType == QueueTypeDurable {

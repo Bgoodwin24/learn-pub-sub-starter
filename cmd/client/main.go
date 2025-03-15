@@ -11,6 +11,13 @@ import (
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 )
 
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(state routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(state)
+	}
+}
+
 func main() {
 	fmt.Println("Starting Peril client...")
 
@@ -51,6 +58,11 @@ func main() {
 
 	gamestate := gamelogic.NewGameState(username)
 
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, "pause."+username, routing.PauseKey, pubsub.QueueTypeTransient, handlerPause(gamestate))
+	if err != nil {
+		log.Fatalf("Failed to subscribe: %v\n", err)
+	}
+
 	for {
 		words := gamelogic.GetInput()
 		if len(words) == 0 {
@@ -84,5 +96,4 @@ func main() {
 		}
 
 	}
-
 }
