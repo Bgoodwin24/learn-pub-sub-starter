@@ -56,7 +56,12 @@ func main() {
 		log.Fatalf("Failed to subscribe: %v\n", err)
 	}
 
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_moves."+username, "army_moves.*", pubsub.QueueTypeTransient, handlerMove(gamestate))
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_moves."+username, "army_moves.*", pubsub.QueueTypeTransient, handlerMove(gamestate, ch))
+	if err != nil {
+		log.Fatalf("Failed to subscribe: %v", err)
+	}
+
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "war", routing.WarRecognitionsPrefix+".*", pubsub.QueueTypeDurable, handlerWar(gamestate))
 	if err != nil {
 		log.Fatalf("Failed to subscribe: %v", err)
 	}
