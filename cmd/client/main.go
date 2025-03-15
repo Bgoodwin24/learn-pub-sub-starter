@@ -11,13 +11,6 @@ import (
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 )
 
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	return func(state routing.PlayingState) {
-		defer fmt.Print("> ")
-		gs.HandlePause(state)
-	}
-}
-
 func main() {
 	fmt.Println("Starting Peril client...")
 
@@ -63,6 +56,11 @@ func main() {
 		log.Fatalf("Failed to subscribe: %v\n", err)
 	}
 
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_moves."+username, "army_moves.*", pubsub.QueueTypeTransient, handlerMove(gamestate))
+	if err != nil {
+		log.Fatalf("Failed to subscribe: %v", err)
+	}
+
 	for {
 		words := gamelogic.GetInput()
 		if len(words) == 0 {
@@ -75,11 +73,16 @@ func main() {
 				fmt.Printf("Failed to spawn unit: %v\n", err)
 			}
 		} else if words[0] == "move" {
-			_, err := gamestate.CommandMove(words)
+			move, err := gamestate.CommandMove(words)
 			if err != nil {
 				fmt.Printf("Failed to move unit: %v\n", err)
 			} else {
-				fmt.Println("Unit moved successfully")
+				err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, "army_moves."+username, move)
+				if err != nil {
+					fmt.Printf("Failed to publish move: %v\n", err)
+				} else {
+					fmt.Println("Unit moved and published successfully")
+				}
 			}
 		} else if words[0] == "status" {
 			gamestate.CommandStatus()
