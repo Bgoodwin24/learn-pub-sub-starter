@@ -2,66 +2,71 @@ package main
 
 import (
 	"fmt"
-	"log"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.AckType {
-	return func(state routing.PlayingState) pubsub.AckType {
+func handlerMove(gs *gamelogic.GameState, publishCh *amqp.Channel) func(gamelogic.ArmyMove) pubsub.Acktype {
+	return func(move gamelogic.ArmyMove) pubsub.Acktype {
 		defer fmt.Print("> ")
-		gs.HandlePause(state)
-		log.Println("Pause handler triggered; acknowledging")
-		return pubsub.Ack
-	}
-}
 
-func handlerMove(gs *gamelogic.GameState, ch *amqp.Channel) func(move gamelogic.ArmyMove) pubsub.AckType {
-	return func(move gamelogic.ArmyMove) pubsub.AckType {
-		defer fmt.Print("> ")
-		outcome := gs.HandleMove(move)
-
-		if outcome == gamelogic.MoveOutcomeMakeWar {
-			war := gamelogic.RecognitionOfWar{
-				Attacker: move.Player,
-			}
-			pubsub.PublishJSON(ch, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix+"."+move.Player.Username, war)
-			return pubsub.NackRequeue
-		} else if outcome == gamelogic.MoveOutComeSafe {
-			log.Println("Move handler acknowledges; outcome:", outcome)
+		moveOutcome := gs.HandleMove(move)
+		switch moveOutcome {
+		case gamelogic.MoveOutcomeSamePlayer:
 			return pubsub.Ack
-		} else if outcome == gamelogic.MoveOutcomeSamePlayer {
-			log.Println("Move handler rejects and discards (same player); outcome:", outcome)
-			return pubsub.NackDiscard
+		case gamelogic.MoveOutComeSafe:
+			return pubsub.Ack
+		case gamelogic.MoveOutcomeMakeWar:
+			err := pubsub.PublishJSON(
+				publishCh,
+				routing.ExchangePerilTopic,
+				routing.WarRecognitionsPrefix+"."+gs.GetUsername(),
+				gamelogic.RecognitionOfWar{
+					Attacker: move.Player,
+					Defender: gs.GetPlayerSnap(),
+				},
+			)
+			if err != nil {
+				fmt.Printf("error: %s\n", err)
+				return pubsub.NackRequeue
+			}
+			return pubsub.Ack
 		}
 
-		log.Println("Move handler rejects and discards (unexpected); outcome:", outcome)
+		fmt.Println("error: unknown move outcome")
 		return pubsub.NackDiscard
 	}
 }
 
-func handlerWar(gs *gamelogic.GameState) func(recognition gamelogic.RecognitionOfWar) pubsub.AckType {
-	return func(recognition gamelogic.RecognitionOfWar) pubsub.AckType {
+func handlerWar(gs *gamelogic.GameState) func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
+	return func(dw gamelogic.RecognitionOfWar) pubsub.Acktype {
 		defer fmt.Print("> ")
-		outcome, _, _ := gs.HandleWar(recognition)
-
-		if outcome == gamelogic.WarOutcomeNotInvolved {
+		warOutcome, _, _ := gs.HandleWar(dw)
+		switch warOutcome {
+		case gamelogic.WarOutcomeNotInvolved:
 			return pubsub.NackRequeue
-		} else if outcome == gamelogic.WarOutcomeNoUnits {
+		case gamelogic.WarOutcomeNoUnits:
 			return pubsub.NackDiscard
-		} else if outcome == gamelogic.WarOutcomeOpponentWon {
+		case gamelogic.WarOutcomeOpponentWon:
 			return pubsub.Ack
-		} else if outcome == gamelogic.WarOutcomeYouWon {
+		case gamelogic.WarOutcomeYouWon:
 			return pubsub.Ack
-		} else if outcome == gamelogic.WarOutcomeDraw {
+		case gamelogic.WarOutcomeDraw:
 			return pubsub.Ack
-		} else {
-			fmt.Println("Error acknowledging outcome")
-			return pubsub.NackDiscard
 		}
+
+		fmt.Println("error: unknown war outcome")
+		return pubsub.NackDiscard
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Acktype {
+	return func(ps routing.PlayingState) pubsub.Acktype {
+		defer fmt.Print("> ")
+		gs.HandlePause(ps)
+		return pubsub.Ack
 	}
 }
