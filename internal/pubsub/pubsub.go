@@ -15,6 +15,14 @@ const (
 	QueueTypeTransient
 )
 
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackRequeue
+	NackDiscard
+)
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	jsonBytes, err := json.Marshal(val)
 	if err != nil {
@@ -36,7 +44,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	)
 }
 
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType SimpleQueueType, handler func(T)) error {
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType SimpleQueueType, handler func(T) AckType) error {
 	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
 		return err
@@ -65,8 +73,20 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 				continue
 			}
 
-			handler(msg)
-			delivery.Ack(false)
+			ackType := handler(msg)
+			if ackType == Ack {
+				log.Println("Message acknowledged (Ack)")
+				delivery.Ack(false)
+			} else if ackType == NackRequeue {
+				log.Println("Message negatively acknowledged and requeued (NackRequeue)")
+				delivery.Nack(false, true)
+			} else if ackType == NackDiscard {
+				log.Println("Message negatively acknowledged and discarded (NackDiscard)")
+				delivery.Nack(false, false)
+			} else {
+				log.Println("Unknown AckType, discarding message")
+				delivery.Nack(false, false)
+			}
 		}
 	}()
 	return nil
